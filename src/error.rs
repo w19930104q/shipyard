@@ -962,6 +962,41 @@ impl Display for ImpossibleRequirements {
     }
 }
 
+/// Returned by [`World::move_entity`] and [`AllStorages::move_entity`].
+///
+/// [`World::move_entity`]: crate::world::World::move_entity()
+/// [`AllStorages::move_entity`]: crate::all_storages::AllStorages::move_entity()
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum MoveEntity {
+    /// The source entity is not alive.
+    SourceNotAlive(EntityId),
+    /// The target world already has an entity at the same index.
+    TargetOccupied(EntityId),
+}
+
+impl Error for MoveEntity {}
+
+impl Debug for MoveEntity {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), core::fmt::Error> {
+        match self {
+            MoveEntity::SourceNotAlive(entity) => f.write_fmt(format_args!(
+                "Entity {:?} has to be alive to move it to another World.",
+                entity
+            )),
+            MoveEntity::TargetOccupied(entity) => f.write_fmt(format_args!(
+                "Other World already has an entity at {:?}'s index.",
+                entity
+            )),
+        }
+    }
+}
+
+impl Display for MoveEntity {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), core::fmt::Error> {
+        Debug::fmt(self, f)
+    }
+}
+
 /// Returned by [`World::get`] and [`AllStorages::get`].
 ///
 /// [`World::get`]: crate::world::World::get

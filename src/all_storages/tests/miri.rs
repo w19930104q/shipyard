@@ -556,7 +556,7 @@ fn move_entity() {
         calls.fetch_add(1, Ordering::Relaxed);
     });
 
-    source.move_entity(&mut destination, moved);
+    source.move_entity(&mut destination, moved).unwrap();
 
     assert_eq!(deletions.load(Ordering::Relaxed), 1);
     assert!(!source.is_entity_alive(moved));
@@ -597,9 +597,7 @@ fn move_entity_rejects_newer_destination() {
 
     let source_time = source.get_tracking_timestamp().get();
     let destination_time = destination.get_tracking_timestamp().get();
-    let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-        source.move_entity(&mut destination, entity);
-    }));
+    let result = source.move_entity(&mut destination, entity);
 
     assert!(result.is_err());
     assert_eq!(deletions.load(Ordering::Relaxed), 0);
@@ -626,9 +624,7 @@ fn move_entity_rejects_retired_destination() {
     assert!(destination.delete_entity(retired));
     let deletions = count_entity_deletions(&source);
 
-    let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-        source.move_entity(&mut destination, entity);
-    }));
+    let result = source.move_entity(&mut destination, entity);
 
     assert!(result.is_err());
     assert_eq!(deletions.load(Ordering::Relaxed), 0);
@@ -650,9 +646,7 @@ fn move_entity_rejects_dead_source() {
     assert!(source.delete_entity(entity));
     let deletions = count_entity_deletions(&source);
 
-    let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-        source.move_entity(&mut destination, entity);
-    }));
+    let result = source.move_entity(&mut destination, entity);
 
     assert!(result.is_err());
     assert_eq!(deletions.load(Ordering::Relaxed), 0);

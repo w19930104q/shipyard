@@ -284,7 +284,7 @@ fn move_entity_calls() {
     let now = next_timestamp(all_storages);
     let other_now = next_timestamp(other_storages);
 
-    all_storages.move_entity(other_storages, entity);
+    all_storages.move_entity(other_storages, entity).unwrap();
 
     assert_eq!(take(&calls), [Call::Move(entity, entity, now, other_now)]);
 }
@@ -387,7 +387,7 @@ fn entity_ops_keep_unique() {
     all_storages.strip(entities[1]);
     all_storages.bulk_strip([entities[2]]);
     all_storages.retain_storage_by_id(entities[3], &[]);
-    all_storages.move_entity(other.all_storages.get_mut(), entities[4]);
+    all_storages.move_entity(other.all_storages.get_mut(), entities[4]).unwrap();
     all_storages.clear();
 
     let unique = all_storages

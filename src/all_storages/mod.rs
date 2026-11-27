@@ -29,7 +29,7 @@ use crate::borrow::{NonSend, NonSendSync, NonSync};
 use crate::component::{Component, Unique};
 use crate::entities::Entities;
 use crate::entity_id::EntityId;
-use crate::error;
+use crate::error::{self, MoveEntity};
 use crate::get_component::GetComponent;
 use crate::get_unique::GetUnique;
 use crate::iter::Shiperator;
@@ -1722,10 +1722,13 @@ for (i, j) in &mut iter {
 
     /// Moves an entity from a `World` to another.
     ///
-    /// ### Panics
+    /// ### Errors
     ///
-    /// - `entity` is not alive in the source world.
-    /// - The destination world cannot spawn `entity`.
+    /// - [`MoveEntity::SourceNotAlive`] if `entity` is not alive in the source world.
+    /// - [`MoveEntity::TargetOccupied`] if the destination world cannot spawn `entity`.
+    ///
+    /// [`MoveEntity::SourceNotAlive`]: crate::error::MoveEntity::SourceNotAlive
+    /// [`MoveEntity::TargetOccupied`]: crate::error::MoveEntity::TargetOccupied
     ///
     /// ```
     /// use shipyard::{AllStoragesViewMut, Component, World};
@@ -1741,20 +1744,22 @@ for (i, j) in &mut iter {
     ///
     /// let entity = all_storages1.add_entity(USIZE(1));
     ///
-    /// all_storages1.move_entity(&mut all_storages2, entity);
+    /// all_storages1.move_entity(&mut all_storages2, entity).unwrap();
     ///
     /// assert!(!all_storages1.is_entity_alive(entity));
     /// assert_eq!(all_storages2.get::<&USIZE>(entity).as_deref(), Ok(&USIZE(1)));
     /// ```
     #[track_caller]
-    pub fn move_entity(&mut self, other: &mut AllStorages, entity: EntityId) {
-        assert!(
-            self.entities.get_mut().is_alive(entity),
-            "Entity {:?} has to be alive to move it to another World.",
-            entity
-        );
+    pub fn move_entity(
+        &mut self,
+        other: &mut AllStorages,
+        entity: EntityId,
+    ) -> Result<(), MoveEntity> {
+        if !self.entities.get_mut().is_alive(entity) {
+            return Err(MoveEntity::SourceNotAlive(entity));
+        }
         let Some(slot) = other.entities.get_mut().spawn_slot(entity) else {
-            panic!("Other World already has an entity at {:?}'s index.", entity);
+            return Err(MoveEntity::TargetOccupied(entity));
         };
 
         let current = self.get_current();
@@ -1775,6 +1780,8 @@ for (i, j) in &mut iter {
                 other_current,
             );
         }
+
+        Ok(())
     }
 
     /// Moves all components from an entity to another in another `World`.

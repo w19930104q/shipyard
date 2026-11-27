@@ -12,7 +12,7 @@ use crate::atomic_refcell::{ARef, ARefMut, AtomicRefCell};
 use crate::borrow::WorldBorrow;
 use crate::component::{Component, Unique};
 use crate::entity_id::EntityId;
-use crate::error;
+use crate::error::{self, MoveEntity};
 use crate::get_component::GetComponent;
 use crate::get_unique::GetUnique;
 use crate::iter::Shiperator;
@@ -1691,10 +1691,13 @@ for (i, j) in &mut iter {
 
     /// Moves an entity from a `World` to another.
     ///
-    /// ### Panics
+    /// ### Errors
     ///
-    /// - `entity` is not alive in the source world.
-    /// - The destination world cannot spawn `entity`.
+    /// - [`MoveEntity::SourceNotAlive`] if `entity` is not alive in the source world.
+    /// - [`MoveEntity::TargetOccupied`] if the destination world cannot spawn `entity`.
+    ///
+    /// [`MoveEntity::SourceNotAlive`]: crate::error::MoveEntity::SourceNotAlive
+    /// [`MoveEntity::TargetOccupied`]: crate::error::MoveEntity::TargetOccupied
     ///
     /// ### Example
     ///
@@ -1709,19 +1712,23 @@ for (i, j) in &mut iter {
     ///
     /// let entity = world1.add_entity(USIZE(1));
     ///
-    /// world1.move_entity(&mut world2, entity);
+    /// world1.move_entity(&mut world2, entity).unwrap();
     ///
     /// assert!(!world1.is_entity_alive(entity));
     /// assert_eq!(world2.get::<&USIZE>(entity).as_deref(), Ok(&USIZE(1)));
     /// ```
     #[inline]
     #[track_caller]
-    pub fn move_entity(&mut self, other: &mut World, entity: EntityId) {
+    pub fn move_entity(
+        &mut self,
+        other: &mut World,
+        entity: EntityId,
+    ) -> Result<(), MoveEntity> {
         let other_all_storages = other.all_storages.get_mut();
 
         self.all_storages
             .get_mut()
-            .move_entity(other_all_storages, entity);
+            .move_entity(other_all_storages, entity)
     }
 
     /// Moves all components from an entity to another in another `World`.
