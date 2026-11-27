@@ -1444,6 +1444,38 @@ let i = all_storages.run(sys1);
     pub fn spawn(&mut self, entity: EntityId) -> bool {
         self.entities.get_mut().spawn(entity)
     }
+
+    /// Walks all sparse-set storages and spawns every entity id they carry,
+    /// so the entity table matches the components actually stored.
+    ///
+    /// Returns the number of entities that were made alive.
+    ///
+    /// Use after deserializing component views into a fresh (or cleared) world
+    /// without an accompanying [`EntitiesViewMut`], to keep allocations and
+    /// events consistent.
+    ///
+    /// [`EntitiesViewMut`]: crate::EntitiesViewMut
+    pub fn sync_entities_from_storages(&self) -> usize {
+        let mut entities = self.entities.borrow_mut().unwrap();
+        let storages = self.storages.read();
+        let mut spawned = 0;
+
+        for sbox in storages.components_and_custom.values() {
+            let storage = unsafe { &*sbox.0 };
+            if let Ok(storage) = storage.borrow() {
+                if let Some(dense) = storage.dense() {
+                    for &entity in dense {
+                        if entities.spawn(entity) {
+                            spawned += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        spawned
+    }
+
     /// Displays storages memory information.
     pub fn memory_usage(&self) -> AllStoragesMemoryUsage<'_> {
         AllStoragesMemoryUsage(self)
@@ -2257,6 +2289,10 @@ impl AllStorages {
 
     /// Deserializes the view using the provided deserializer.
     ///
+    /// After deserialization, entities are automatically synced from the component
+    /// storages so the world stays consistent. Both entity views and plain
+    /// component views can be used immediately.
+    ///
     /// ### Example
     ///
     /// ```
@@ -2276,15 +2312,7 @@ impl AllStorages {
     /// let alice_eid = EntityId::new_from_index_and_gen(0, 0);
     /// assert_eq!(all_storages.get::<&Name>(alice_eid).unwrap().0, "Alice");
     ///
-    /// // Careful here, the World is not in a stable state
-    ///
-    /// assert_eq!(all_storages.is_entity_alive(alice_eid), false);
-    ///
-    /// // We can use World::spawn for example to fix the problem
-    /// // another solution would be to serialize EntitiesViewMut
-    ///
-    /// all_storages.spawn(alice_eid);
-    ///
+    /// // Entities are automatically alive after deserialization.
     /// assert_eq!(all_storages.is_entity_alive(alice_eid), true);
     /// ```
     pub fn deserialize<'a, 'de, D: serde::Deserializer<'de>, V: Borrow>(
@@ -2295,11 +2323,16 @@ impl AllStorages {
         V::View<'a>: serde::Deserialize<'de>,
     {
         match self.borrow::<V>() {
-            Ok(mut view) => match serde::Deserialize::deserialize_in_place(deserializer, &mut view)
-            {
-                Ok(ok) => Ok(ok),
-                Err(err) => Err(error::Deserialize::Deserialization(err)),
-            },
+            Ok(mut view) => {
+                match serde::Deserialize::deserialize_in_place(deserializer, &mut view) {
+                    Ok(ok) => {
+                        drop(view);
+                        self.sync_entities_from_storages();
+                        Ok(ok)
+                    }
+                    Err(err) => Err(error::Deserialize::Deserialization(err)),
+                }
+            }
             Err(err) => Err(error::Deserialize::Borrow(err)),
         }
     }

@@ -1283,6 +1283,21 @@ impl World {
         self.all_storages.get_mut().spawn(entity)
     }
 
+    /// Walks all sparse-set storages and spawns every entity id they carry,
+    /// so the entity table matches the components actually stored.
+    ///
+    /// Returns the number of entities that were made alive.
+    ///
+    /// Use after deserializing component views into a fresh (or cleared) world
+    /// without an accompanying [`EntitiesViewMut`], to keep allocations and
+    /// events consistent.
+    ///
+    /// [`EntitiesViewMut`]: crate::EntitiesViewMut
+    #[inline]
+    pub fn sync_entities(&self) -> usize {
+        self.all_storages.borrow().unwrap().sync_entities_from_storages()
+    }
+
     /// Deletes all components for which `f(id, &component)` returns `false`.
     ///
     /// # Panics
@@ -1949,6 +1964,10 @@ impl World {
 
     /// Deserializes the view using the provided deserializer.
     ///
+    /// After deserialization, entities are automatically synced from the component
+    /// storages so the world stays consistent. Both entity views and plain
+    /// component views can be used immediately.
+    ///
     /// ### Example
     ///
     /// ```
@@ -1967,15 +1986,7 @@ impl World {
     /// let alice_eid = EntityId::new_from_index_and_gen(0, 0);
     /// assert_eq!(world.get::<&Name>(alice_eid).unwrap().0, "Alice");
     ///
-    /// // Careful here, the World is not in a stable state
-    ///
-    /// assert_eq!(world.is_entity_alive(alice_eid), false);
-    ///
-    /// // We can use World::spawn for example to fix the problem
-    /// // another solution would be to serialize EntitiesViewMut
-    ///
-    /// world.spawn(alice_eid);
-    ///
+    /// // Entities are automatically alive after deserialization.
     /// assert_eq!(world.is_entity_alive(alice_eid), true);
     /// ```
     pub fn deserialize<'w, 'de, D: serde::Deserializer<'de>, V: WorldBorrow>(
@@ -1986,11 +1997,16 @@ impl World {
         V::WorldView<'w>: serde::Deserialize<'de>,
     {
         match self.borrow::<V>() {
-            Ok(mut view) => match serde::Deserialize::deserialize_in_place(deserializer, &mut view)
-            {
-                Ok(ok) => Ok(ok),
-                Err(err) => Err(error::Deserialize::Deserialization(err)),
-            },
+            Ok(mut view) => {
+                match serde::Deserialize::deserialize_in_place(deserializer, &mut view) {
+                    Ok(ok) => {
+                        drop(view);
+                        self.sync_entities();
+                        Ok(ok)
+                    }
+                    Err(err) => Err(error::Deserialize::Deserialization(err)),
+                }
+            }
             Err(err) => Err(error::Deserialize::Borrow(err)),
         }
     }

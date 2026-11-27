@@ -45,19 +45,8 @@ world
 assert_eq!(world.get::<&Name>(eid2).unwrap().0, "Bob");
 assert_eq!(world.get::<&Name>(eid1).unwrap().0, "Alice");
 
-// Note that we never added eid1 or eid2 to this second World
-// they weren't added during deserialization either
-// the World is currently in an unstable state
-
-assert_eq!(world.is_entity_alive(eid1), false);
-
-// To fix it, we can use `World::spawn` for example
-// we could've also created empty entities
-// or (de)serialized EntitiesViewMut
-
-world.spawn(eid1);
-world.spawn(eid2);
-
+// Note that we never added eid1 or eid2 to this second World manually,
+// but after deserialization entities are automatically synced from component storages.
 assert_eq!(world.is_entity_alive(eid1), true);
 assert_eq!(world.is_entity_alive(eid2), true);
 // ANCHOR_END: single_view
