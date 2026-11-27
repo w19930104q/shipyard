@@ -485,6 +485,55 @@ impl AllStorages {
             false
         }
     }
+
+    /// Deletes multiple entities and all their components in a single batch.
+    ///
+    /// Each living entity is deleted exactly once, even when it appears multiple times in the input.
+    /// Dead entities and duplicates are silently skipped. The entity table is updated first,
+    /// then all storages are stripped at once, so queries and groups never see a partially
+    /// deleted batch.
+    ///
+    /// ### Example
+    ///
+    /// ```
+    /// use shipyard::{AllStoragesViewMut, Component, View, World};
+    ///
+    /// #[derive(Component, Debug, PartialEq, Eq)]
+    /// struct U32(u32);
+    ///
+    /// #[derive(Component, Debug, PartialEq, Eq)]
+    /// struct USIZE(usize);
+    ///
+    /// let world = World::new();
+    /// let mut all_storages = world.borrow::<AllStoragesViewMut>().unwrap();
+    ///
+    /// let entity1 = all_storages.add_entity((USIZE(0), U32(1)));
+    /// let entity2 = all_storages.add_entity((USIZE(2), U32(3)));
+    /// let entity3 = all_storages.add_entity(USIZE(4));
+    ///
+    /// all_storages.bulk_delete_entity([entity1, entity2, entity2, entity3]);
+    ///
+    /// all_storages.run(|usizes: View<USIZE>, u32s: View<U32>| {
+    ///     assert_eq!(usizes.len(), 0);
+    ///     assert_eq!(u32s.len(), 0);
+    /// });
+    /// ```
+    #[track_caller]
+    pub fn bulk_delete_entity<I: IntoIterator<Item = EntityId>>(&mut self, entities: I) {
+        let mut alive = Vec::new();
+        {
+            let entities = self.entities.get_mut();
+            for entity in entities.into_iter() {
+                if entities.delete_unchecked(entity) {
+                    alive.push(entity);
+                }
+            }
+        }
+        if !alive.is_empty() {
+            self.bulk_strip(alive);
+        }
+    }
+
     /// Deletes all components from an entity without deleting it.
     ///
     /// ### Example

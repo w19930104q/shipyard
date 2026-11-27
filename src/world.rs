@@ -1063,6 +1063,40 @@ impl World {
     pub fn delete_entity(&mut self, entity: EntityId) -> bool {
         self.all_storages.get_mut().delete_entity(entity)
     }
+
+    /// Deletes multiple entities and all their components in a single batch.
+    ///
+    /// Each living entity is deleted exactly once, even when it appears multiple times in the input.
+    /// Dead entities and duplicates are silently skipped.
+    ///
+    /// ### Example
+    ///
+    /// ```
+    /// use shipyard::{Component, View, World};
+    ///
+    /// #[derive(Component)]
+    /// struct U32(u32);
+    ///
+    /// #[derive(Component)]
+    /// struct USIZE(usize);
+    ///
+    /// let mut world = World::new();
+    ///
+    /// let entity1 = world.add_entity((USIZE(0), U32(1)));
+    /// let entity2 = world.add_entity((USIZE(2), U32(3)));
+    ///
+    /// world.bulk_delete_entity([entity1, entity2]);
+    ///
+    /// let (u32s, usizes) = world.borrow::<(View<U32>, View<USIZE>)>().unwrap();
+    /// assert_eq!(u32s.len(), 0);
+    /// assert_eq!(usizes.len(), 0);
+    /// ```
+    #[inline]
+    #[track_caller]
+    pub fn bulk_delete_entity<I: IntoIterator<Item = EntityId>>(&mut self, entities: I) {
+        self.all_storages.get_mut().bulk_delete_entity(entities);
+    }
+
     /// Deletes all components of an entity without deleting the entity.
     ///
     /// ### Example

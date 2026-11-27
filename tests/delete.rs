@@ -264,3 +264,137 @@ fn delete_tuple() {
     assert!(u32s.get(entity).is_err());
     assert!(markers.get(entity).is_err());
 }
+
+/// Asserts that bulk_delete_entity deletes all entities in the batch.
+#[test]
+fn bulk_delete_entity_basic() {
+    let mut world = World::new();
+
+    let entity1 = world.add_entity(U32(1));
+    let entity2 = world.add_entity(U32(2));
+    let entity3 = world.add_entity(U32(3));
+
+    world.bulk_delete_entity([entity1, entity2, entity3]);
+
+    let u32s = world.borrow::<View<U32>>().unwrap();
+    assert_eq!(u32s.len(), 0);
+}
+
+/// Asserts that duplicate handles are silently skipped, and each living entity
+/// is deleted only once.
+#[test]
+fn bulk_delete_entity_duplicates() {
+    let mut world = World::new();
+
+    let entity = world.add_entity(U32(1));
+
+    world.bulk_delete_entity([entity, entity, entity]);
+
+    let u32s = world.borrow::<View<U32>>().unwrap();
+    assert_eq!(u32s.len(), 0);
+}
+
+/// Asserts that already-dead handles mixed with living ones don't prevent
+/// the living ones from being deleted.
+#[test]
+fn bulk_delete_entity_dead_and_alive() {
+    let mut world = World::new();
+
+    let alive = world.add_entity(U32(1));
+    let dead = world.add_entity(U32(2));
+    world.delete_entity(dead);
+
+    world.bulk_delete_entity([dead, alive, dead]);
+
+    let u32s = world.borrow::<View<U32>>().unwrap();
+    assert_eq!(u32s.len(), 0);
+}
+
+/// Asserts that the `on_deletion` callback fires exactly once per living entity
+/// during a bulk delete, even when duplicates and dead handles are present.
+#[test]
+fn bulk_delete_entity_callback_once() {
+    use std::sync::{Arc, Mutex};
+
+    let mut world = World::new();
+    let deleted = Arc::new(Mutex::new(Vec::new()));
+    let deleted_clone = deleted.clone();
+
+    world
+        .borrow::<EntitiesViewMut>()
+        .unwrap()
+        .on_deletion(move |entity| {
+            deleted_clone.lock().unwrap().push(entity);
+        });
+
+    let alive = world.add_entity(U32(1));
+    let dead = world.add_entity(U32(2));
+    world.delete_entity(dead);
+
+    world.bulk_delete_entity([alive, dead, alive, dead]);
+
+    let calls = deleted.lock().unwrap();
+    assert_eq!(calls.len(), 1, "on_deletion should fire exactly once");
+    assert_eq!(calls[0], alive);
+}
+
+/// Asserts that after bulk_delete_entity, queries and groups cannot see the
+/// deleted entities.
+#[test]
+fn bulk_delete_entity_invisible() {
+    #[derive(PartialEq, Eq, Debug)]
+    struct USIZE(usize);
+    impl Component for USIZE {
+        type Tracking = track::Untracked;
+    }
+
+    let mut world = World::new();
+    world.borrow::<ViewMut<U32>>().unwrap().track_all();
+    world.borrow::<ViewMut<USIZE>>().unwrap().track_all();
+
+    let e1 = world.add_entity((U32(1), USIZE(10)));
+    let e2 = world.add_entity((U32(2), USIZE(20)));
+
+    world.bulk_delete_entity([e1, e2]);
+
+    // Queries see nothing.
+    let (u32s, usizes) = world.borrow::<(View<U32>, View<USIZE>)>().unwrap();
+    assert_eq!(u32s.len(), 0);
+    assert_eq!(usizes.len(), 0);
+    assert!(u32s.get(e1).is_err());
+    assert!(u32s.get(e2).is_err());
+    drop((u32s, usizes));
+
+    // Deletion tracking recorded both.
+    let (u32s, usizes) = world
+        .borrow::<(View<U32, track::All>, View<USIZE, track::All>)>()
+        .unwrap();
+    assert_eq!(u32s.deleted().count(), 2);
+    assert_eq!(usizes.deleted().count(), 2);
+}
+
+/// Asserts that bulk_delete_entity with an empty iterator is a no-op.
+#[test]
+fn bulk_delete_entity_empty() {
+    let mut world = World::new();
+    world.add_entity(U32(1));
+
+    world.bulk_delete_entity(Vec::<EntityId>::new());
+
+    let u32s = world.borrow::<View<U32>>().unwrap();
+    assert_eq!(u32s.len(), 1);
+}
+
+/// Asserts that bulk_delete_entity with only dead handles is a no-op.
+#[test]
+fn bulk_delete_entity_all_dead() {
+    let mut world = World::new();
+
+    let entity = world.add_entity(U32(1));
+    world.delete_entity(entity);
+
+    world.bulk_delete_entity([entity]);
+
+    let u32s = world.borrow::<View<U32>>().unwrap();
+    assert_eq!(u32s.len(), 0);
+}
