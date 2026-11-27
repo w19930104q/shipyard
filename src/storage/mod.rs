@@ -60,6 +60,10 @@ pub trait Storage: SizedAny {
     #[inline]
     #[allow(unused_variables)]
     fn delete(&mut self, entity: EntityId, current: TrackingTimestamp) {}
+    /// Removes an entity's component from this storage, recording removal tracking.
+    #[inline]
+    #[allow(unused_variables)]
+    fn remove(&mut self, entity: EntityId, current: TrackingTimestamp) {}
     /// Deletes all components of this storage.
     #[inline]
     #[allow(unused_variables)]

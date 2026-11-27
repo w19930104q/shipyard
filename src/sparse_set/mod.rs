@@ -408,6 +408,74 @@ impl<T: Component> SparseSet<T> {
         unsafe { self.delete_found(entity, sparse_entity, current) };
     }
 
+    /// Removes a component from this sparse set and records removal tracking.
+    ///
+    /// Never returns the component, unlike [`dyn_remove`](Self::dyn_remove).
+    /// Only removing a component calls out of line for the same reasons as [`strip_delete`](Self::strip_delete).
+    #[inline]
+    pub(crate) fn strip_remove(&mut self, entity: EntityId, current: TrackingTimestamp) {
+        let Some(sparse_entity) = self.removable_entry(entity) else {
+            return;
+        };
+
+        // SAFE: `removable_entry` read `sparse_entity` from `entity`'s sparse slot, so its page is allocated,
+        // and it only returns live entries.
+        unsafe { self.remove_found_for_strip(entity, sparse_entity, current) };
+    }
+
+    /// Same as [`remove_found`](Self::remove_found), recording removal tracking.
+    ///
+    /// ### Safety
+    ///
+    /// `entity`'s sparse page must be allocated, and `sparse_entity` must be the live entry its slot holds.
+    #[inline(never)]
+    unsafe fn remove_found_for_strip(
+        &mut self,
+        entity: EntityId,
+        sparse_entity: EntityId,
+        current: TrackingTimestamp,
+    ) {
+        // SAFE: the caller upholds `remove_found`'s requirements, they're the same as ours.
+        let component = unsafe { self.remove_found(entity, sparse_entity) };
+
+        if component.is_some() && self.is_tracking_removal() {
+            self.removal_data.push((entity, current));
+        }
+    }
+    /// Removes a component from this sparse set and records removal tracking.
+    ///
+    /// Never returns the component, unlike [`dyn_remove`](Self::dyn_remove).
+    /// Only removing a component calls out of line for the same reasons as [`strip_delete`](Self::strip_delete).
+    #[inline]
+    pub(crate) fn strip_remove(&mut self, entity: EntityId, current: TrackingTimestamp) {
+        let Some(sparse_entity) = self.removable_entry(entity) else {
+            return;
+        };
+
+        // SAFE: `removable_entry` read `sparse_entity` from `entity`'s sparse slot, so its page is allocated,
+        // and it only returns live entries.
+        unsafe { self.remove_found_for_strip(entity, sparse_entity, current) };
+    }
+
+    /// Same as [`remove_found`](Self::remove_found), recording removal tracking.
+    ///
+    /// ### Safety
+    ///
+    /// `entity`'s sparse page must be allocated, and `sparse_entity` must be the live entry its slot holds.
+    #[inline(never)]
+    unsafe fn remove_found_for_strip(
+        &mut self,
+        entity: EntityId,
+        sparse_entity: EntityId,
+        current: TrackingTimestamp,
+    ) {
+        // SAFE: the caller upholds `remove_found`'s requirements, they're the same as ours.
+        let component = unsafe { self.remove_found(entity, sparse_entity) };
+
+        if component.is_some() && self.is_tracking_removal() {
+            self.removal_data.push((entity, current));
+        }
+    }
     /// Finds `entity`'s component and removes it, without recording removal or deletion tracking.
     ///
     /// [`dyn_remove`](Self::dyn_remove) and [`dyn_delete`](Self::dyn_delete) add the tracking.
